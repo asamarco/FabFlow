@@ -1,0 +1,12 @@
+node_modules
+.output
+.nitro
+.vinxi
+dist
+.git
+.gitignore
+.env
+.env.*
+*.log
+.DS_Store
+.lovable
