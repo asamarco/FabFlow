@@ -383,96 +383,206 @@ function Isometric({ layers, refTotal }: { layers: Layer[]; refTotal?: number | 
     const C = [SX, SY];
     const D = [-SX, SY];
 
-    // left front face
-    nodes.push(
-      <polygon
-        key={`${layer.id}-l`}
-        points={`${p(D[0]!, D[1]!, z)} ${p(C[0]!, C[1]!, z)} ${p(C[0]!, C[1]!, zTop)} ${p(D[0]!, D[1]!, zTop)}`}
-        fill={shade(layer.color, 0.68)}
-        stroke="rgba(0,0,0,0.35)"
-        strokeWidth={0.6}
-      />,
-    );
-    // right front face
-    nodes.push(
-      <polygon
-        key={`${layer.id}-r`}
-        points={`${p(C[0]!, C[1]!, z)} ${p(B[0]!, B[1]!, z)} ${p(B[0]!, B[1]!, zTop)} ${p(C[0]!, C[1]!, zTop)}`}
-        fill={shade(layer.color, 0.85)}
-        stroke="rgba(0,0,0,0.35)"
-        strokeWidth={0.6}
-      />,
-    );
-    // top face
     const isTop = i === layers.length - 1;
-    nodes.push(
-      <polygon
-        key={`${layer.id}-t`}
-        points={`${p(A[0]!, A[1]!, zTop)} ${p(B[0]!, B[1]!, zTop)} ${p(C[0]!, C[1]!, zTop)} ${p(D[0]!, D[1]!, zTop)}`}
-        fill={layer.color}
-        stroke="rgba(0,0,0,0.35)"
-        strokeWidth={0.6}
-        opacity={layer.isResist ? 0.85 : 1}
-      />,
-    );
+    const visiblePattern = isTop && layer.patterned && layer.pattern && layer.pattern.kind !== "none";
 
-    // openings drawn on the top face of the topmost patterned layer
-    if (isTop && layer.patterned && layer.pattern && layer.pattern.kind !== "none") {
+    // A visible patterned layer is assembled from only its retained pieces
+    // below. Drawing a complete slab first leaves a continuous sheet behind
+    // inverted pillars and underneath openings.
+    if (!visiblePattern) {
+      nodes.push(
+        <polygon
+          key={`${layer.id}-l`}
+          points={`${p(D[0]!, D[1]!, z)} ${p(C[0]!, C[1]!, z)} ${p(C[0]!, C[1]!, zTop)} ${p(D[0]!, D[1]!, zTop)}`}
+          fill={shade(layer.color, 0.68)}
+          stroke="rgba(0,0,0,0.35)"
+          strokeWidth={0.6}
+        />,
+        <polygon
+          key={`${layer.id}-r`}
+          points={`${p(C[0]!, C[1]!, z)} ${p(B[0]!, B[1]!, z)} ${p(B[0]!, B[1]!, zTop)} ${p(C[0]!, C[1]!, zTop)}`}
+          fill={shade(layer.color, 0.85)}
+          stroke="rgba(0,0,0,0.35)"
+          strokeWidth={0.6}
+        />,
+        <polygon
+          key={`${layer.id}-t`}
+          points={`${p(A[0]!, A[1]!, zTop)} ${p(B[0]!, B[1]!, zTop)} ${p(C[0]!, C[1]!, zTop)} ${p(D[0]!, D[1]!, zTop)}`}
+          fill={layer.color}
+          stroke="rgba(0,0,0,0.35)"
+          strokeWidth={0.6}
+          opacity={layer.isResist ? 0.85 : 1}
+        />,
+      );
+    }
+
+    // Cutouts drawn on the top face of the topmost patterned layer. The floor
+    // uses the material directly below instead of a darker version of the
+    // patterned layer, so the pattern reads as a true opening.
+    if (visiblePattern) {
       const inverted = !!layer.pattern.inverted;
+      const below = i > 0 ? layers[i - 1] : undefined;
+      const belowColor = below?.color ?? "transparent";
+      const depth = Math.max(0, Math.min(1, layer.etchDepth ?? 1));
+      const floorZ = zTop - h * depth;
+      const wallColor = shade(layer.color, 0.62);
       if (layer.pattern.kind === "holes") {
         const n = Math.max(1, Math.min(9, layer.pattern.count));
         const ow = Math.max(0.05, Math.min(0.95, layer.pattern.openingWidth ?? 0.5));
         const rows = layer.pattern.layout === "grid" ? Math.ceil(Math.sqrt(n)) : 1;
         const cols = Math.ceil(n / rows);
-        if (inverted) {
-          // exact negative: everything except the openings is removed
-          nodes.push(
-            <polygon
-              key={`${layer.id}-inv`}
-              points={`${p(A[0]!, A[1]!, zTop)} ${p(B[0]!, B[1]!, zTop)} ${p(C[0]!, C[1]!, zTop)} ${p(D[0]!, D[1]!, zTop)}`}
-              fill={shade(layer.color, 0.45)}
-              stroke="rgba(0,0,0,0.35)"
-              strokeWidth={0.5}
-            />,
-          );
-        }
+        const openings: { px: number; topY: number; floorY: number; rx: number; ry: number; key: string }[] = [];
         let drawn = 0;
         for (let r = 0; r < rows && drawn < n; r++) {
           for (let c = 0; c < cols && drawn < n; c++) {
             const ux = -SX + ((c + 0.5) / cols) * 2 * SX;
             const uy = -SY + ((r + 0.5) / rows) * 2 * SY;
             const px = cx + (ux - uy) * COS;
-            const py = cy + (ux + uy) * SIN - zTop;
+            const topY = cy + (ux + uy) * SIN - zTop;
+            const floorY = cy + (ux + uy) * SIN - floorZ;
+            const rx = Math.min(14, ((2 * SX) / cols / 3) * (ow / 0.5));
+            const ry = rx * SIN * 1.15;
+            openings.push({ px, topY, floorY, rx, ry, key: `${r}-${c}` });
+            drawn++;
+          }
+        }
+
+        if (inverted) {
+          nodes.push(
+            <polygon
+              key={`${layer.id}-inv-floor`}
+              points={`${p(A[0]!, A[1]!, floorZ)} ${p(B[0]!, B[1]!, floorZ)} ${p(C[0]!, C[1]!, floorZ)} ${p(D[0]!, D[1]!, floorZ)}`}
+              fill={belowColor}
+              stroke="rgba(0,0,0,0.35)"
+              strokeWidth={0.5}
+            />,
+          );
+          openings.forEach(({ px, topY, floorY, rx, ry, key }) => {
+            if (depth > 0) {
+              nodes.push(
+                <path
+                  key={`${layer.id}-pillar-wall-${key}`}
+                  d={`M ${px - rx} ${topY} A ${rx} ${ry} 0 0 0 ${px + rx} ${topY} L ${px + rx} ${floorY} A ${rx} ${ry} 0 0 1 ${px - rx} ${floorY} Z`}
+                  fill={wallColor}
+                  stroke="rgba(0,0,0,0.3)"
+                  strokeWidth={0.5}
+                />,
+              );
+            }
             nodes.push(
               <ellipse
-                key={`${layer.id}-h-${r}-${c}`}
+                key={`${layer.id}-pillar-top-${key}`}
                 cx={px}
-                cy={py}
-                rx={Math.min(14, ((2 * SX) / cols / 3) * (ow / 0.5))}
-                ry={Math.min(14, ((2 * SX) / cols / 3) * (ow / 0.5)) * SIN * 1.15}
-                fill={inverted ? layer.color : shade(layer.color, 0.45)}
+                cy={topY}
+                rx={rx}
+                ry={ry}
+                fill={layer.color}
                 stroke="rgba(0,0,0,0.35)"
                 strokeWidth={0.5}
               />,
             );
-            drawn++;
-          }
+          });
+        } else {
+          openings.forEach(({ px, topY, floorY, rx, ry, key }) => {
+            nodes.push(
+              <ellipse
+                key={`${layer.id}-floor-${key}`}
+                cx={px}
+                cy={floorY}
+                rx={rx}
+                ry={ry}
+                fill={belowColor}
+                stroke="rgba(0,0,0,0.35)"
+                strokeWidth={0.5}
+              />,
+            );
+            if (depth > 0) {
+              nodes.push(
+                <path
+                  key={`${layer.id}-wall-${key}`}
+                  d={`M ${px - rx} ${topY} A ${rx} ${ry} 0 0 0 ${px + rx} ${topY} L ${px + rx} ${floorY} A ${rx} ${ry} 0 0 1 ${px - rx} ${floorY} Z`}
+                  fill={wallColor}
+                  stroke="rgba(0,0,0,0.3)"
+                  strokeWidth={0.5}
+                />,
+              );
+            }
+          });
+          const holePaths = openings
+            .map(
+              ({ px, topY, rx, ry }) =>
+                `M ${px - rx} ${topY} A ${rx} ${ry} 0 1 0 ${px + rx} ${topY} A ${rx} ${ry} 0 1 0 ${px - rx} ${topY} Z`,
+            )
+            .join(" ");
+          nodes.push(
+            <path
+              key={`${layer.id}-patterned-top`}
+              d={`M ${p(A[0]!, A[1]!, zTop)} L ${p(B[0]!, B[1]!, zTop)} L ${p(C[0]!, C[1]!, zTop)} L ${p(D[0]!, D[1]!, zTop)} Z ${holePaths}`}
+              fill={layer.color}
+              fillRule="evenodd"
+              stroke="rgba(0,0,0,0.35)"
+              strokeWidth={0.6}
+              opacity={layer.isResist ? 0.85 : 1}
+            />,
+            <polygon
+              key={`${layer.id}-patterned-left`}
+              points={`${p(D[0]!, D[1]!, z)} ${p(C[0]!, C[1]!, z)} ${p(C[0]!, C[1]!, zTop)} ${p(D[0]!, D[1]!, zTop)}`}
+              fill={shade(layer.color, 0.68)}
+              stroke="rgba(0,0,0,0.35)"
+              strokeWidth={0.6}
+            />,
+            <polygon
+              key={`${layer.id}-patterned-right`}
+              points={`${p(C[0]!, C[1]!, z)} ${p(B[0]!, B[1]!, z)} ${p(B[0]!, B[1]!, zTop)} ${p(C[0]!, C[1]!, zTop)}`}
+              fill={shade(layer.color, 0.85)}
+              stroke="rgba(0,0,0,0.35)"
+              strokeWidth={0.6}
+            />,
+          );
         }
       } else {
         const c = Math.max(0, Math.min(1, layer.pattern.coverageFraction));
         const xEdge = -SX + c * 2 * SX;
-        const pts = inverted
-          ? `${p(-SX, -SY, zTop)} ${p(xEdge, -SY, zTop)} ${p(xEdge, SY, zTop)} ${p(-SX, SY, zTop)}`
-          : `${p(xEdge, -SY, zTop)} ${p(SX, -SY, zTop)} ${p(SX, SY, zTop)} ${p(xEdge, SY, zTop)}`;
+        const removedMinX = inverted ? -SX : xEdge;
+        const removedMaxX = inverted ? xEdge : SX;
+        const retainedMinX = inverted ? xEdge : -SX;
+        const retainedMaxX = inverted ? SX : xEdge;
+        const pts = `${p(removedMinX, -SY, floorZ)} ${p(removedMaxX, -SY, floorZ)} ${p(removedMaxX, SY, floorZ)} ${p(removedMinX, SY, floorZ)}`;
         nodes.push(
           <polygon
-            key={`${layer.id}-pc`}
+            key={`${layer.id}-pc-floor`}
             points={pts}
-            fill={shade(layer.color, 0.5)}
+            fill={belowColor}
             stroke="rgba(0,0,0,0.3)"
             strokeWidth={0.5}
           />,
         );
+        if (retainedMaxX - retainedMinX > 0.01) {
+          nodes.push(
+            <polygon
+              key={`${layer.id}-pc-front`}
+              points={`${p(retainedMinX, SY, floorZ)} ${p(retainedMaxX, SY, floorZ)} ${p(retainedMaxX, SY, zTop)} ${p(retainedMinX, SY, zTop)}`}
+              fill={shade(layer.color, 0.68)}
+              stroke="rgba(0,0,0,0.35)"
+              strokeWidth={0.6}
+            />,
+            <polygon
+              key={`${layer.id}-pc-side`}
+              points={`${p(retainedMaxX, SY, floorZ)} ${p(retainedMaxX, -SY, floorZ)} ${p(retainedMaxX, -SY, zTop)} ${p(retainedMaxX, SY, zTop)}`}
+              fill={wallColor}
+              stroke="rgba(0,0,0,0.35)"
+              strokeWidth={0.6}
+            />,
+            <polygon
+              key={`${layer.id}-pc-top`}
+              points={`${p(retainedMinX, -SY, zTop)} ${p(retainedMaxX, -SY, zTop)} ${p(retainedMaxX, SY, zTop)} ${p(retainedMinX, SY, zTop)}`}
+              fill={layer.color}
+              stroke="rgba(0,0,0,0.35)"
+              strokeWidth={0.6}
+              opacity={layer.isResist ? 0.85 : 1}
+            />,
+          );
+        }
       }
     }
 
