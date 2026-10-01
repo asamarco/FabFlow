@@ -383,13 +383,12 @@ function Isometric({ layers, refTotal }: { layers: Layer[]; refTotal?: number | 
     const C = [SX, SY];
     const D = [-SX, SY];
 
-    const isTop = i === layers.length - 1;
-    const visiblePattern = isTop && layer.patterned && layer.pattern && layer.pattern.kind !== "none";
+    const pattern = layer.patterned && layer.pattern?.kind !== "none" ? layer.pattern : undefined;
 
     // A visible patterned layer is assembled from only its retained pieces
     // below. Drawing a complete slab first leaves a continuous sheet behind
     // inverted pillars and underneath openings.
-    if (!visiblePattern) {
+    if (!pattern) {
       nodes.push(
         <polygon
           key={`${layer.id}-l`}
@@ -416,20 +415,20 @@ function Isometric({ layers, refTotal }: { layers: Layer[]; refTotal?: number | 
       );
     }
 
-    // Cutouts drawn on the top face of the topmost patterned layer. The floor
-    // uses the material directly below instead of a darker version of the
-    // patterned layer, so the pattern reads as a true opening.
-    if (visiblePattern) {
-      const inverted = !!layer.pattern.inverted;
+    // Build every patterned layer from its retained geometry, including layers
+    // below later deposits. The floor uses the material directly below instead
+    // of a darker version of the patterned layer, so openings remain physical.
+    if (pattern) {
+      const inverted = !!pattern.inverted;
       const below = i > 0 ? layers[i - 1] : undefined;
       const belowColor = below?.color ?? "transparent";
       const depth = Math.max(0, Math.min(1, layer.etchDepth ?? 1));
       const floorZ = zTop - h * depth;
       const wallColor = shade(layer.color, 0.62);
-      if (layer.pattern.kind === "holes") {
-        const n = Math.max(1, Math.min(9, layer.pattern.count));
-        const ow = Math.max(0.05, Math.min(0.95, layer.pattern.openingWidth ?? 0.5));
-        const rows = layer.pattern.layout === "grid" ? Math.ceil(Math.sqrt(n)) : 1;
+      if (pattern.kind === "holes") {
+        const n = Math.max(1, Math.min(9, pattern.count));
+        const ow = Math.max(0.05, Math.min(0.95, pattern.openingWidth ?? 0.5));
+        const rows = pattern.layout === "grid" ? Math.ceil(Math.sqrt(n)) : 1;
         const cols = Math.ceil(n / rows);
         const openings: { px: number; topY: number; floorY: number; rx: number; ry: number; key: string }[] = [];
         let drawn = 0;
@@ -448,15 +447,6 @@ function Isometric({ layers, refTotal }: { layers: Layer[]; refTotal?: number | 
         }
 
         if (inverted) {
-          nodes.push(
-            <polygon
-              key={`${layer.id}-inv-floor`}
-              points={`${p(A[0]!, A[1]!, floorZ)} ${p(B[0]!, B[1]!, floorZ)} ${p(C[0]!, C[1]!, floorZ)} ${p(D[0]!, D[1]!, floorZ)}`}
-              fill={belowColor}
-              stroke="rgba(0,0,0,0.35)"
-              strokeWidth={0.5}
-            />,
-          );
           openings.forEach(({ px, topY, floorY, rx, ry, key }) => {
             if (depth > 0) {
               nodes.push(
@@ -541,7 +531,7 @@ function Isometric({ layers, refTotal }: { layers: Layer[]; refTotal?: number | 
           );
         }
       } else {
-        const c = Math.max(0, Math.min(1, layer.pattern.coverageFraction));
+        const c = Math.max(0, Math.min(1, pattern.coverageFraction));
         const xEdge = -SX + c * 2 * SX;
         const removedMinX = inverted ? -SX : xEdge;
         const removedMaxX = inverted ? xEdge : SX;
