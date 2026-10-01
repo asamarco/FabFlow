@@ -159,6 +159,7 @@ function stackNodes(
       const runEtchH = planarize ? runH * depth : etchH;
       const runKeepH = runH - runEtchH;
       const keepY = flipped ? top : top + runEtchH;
+      const residualBottom = flipped ? top + runKeepH : run.base;
 
       const hasMaterial = (candidate: Run | undefined) => {
         if (!candidate) return false;
@@ -189,7 +190,7 @@ function stackNodes(
       } else if (runKeepH > 0.01) {
         push(
           `${layer.id}-${ri}-keep`,
-          `${left},${keepY} ${right},${keepY} ${right},${run.base} ${left},${run.base}`,
+          `${left},${keepY} ${right},${keepY} ${right},${residualBottom} ${left},${residualBottom}`,
         );
       }
 
@@ -203,7 +204,8 @@ function stackNodes(
         } else {
           outline(`${layer.id}-${ri}-top`, `${left},${keepY} ${right},${keepY}`);
         }
-        outline(`${layer.id}-${ri}-bottom`, `${left},${run.base} ${right},${run.base}`);
+        const visibleBottom = run.kept ? run.base : residualBottom;
+        outline(`${layer.id}-${ri}-bottom`, `${left},${visibleBottom} ${right},${visibleBottom}`);
 
         const prevSharesBase = prev && Math.abs(prev.base - run.base) < 0.01;
         const nextSharesBase = next && Math.abs(next.base - run.base) < 0.01;
@@ -227,7 +229,7 @@ function stackNodes(
         // neighboring run is an actual void, or at the outside of the wafer.
         if (!prevHasMaterial) {
           const points = !run.kept
-            ? `${left},${keepY} ${left},${run.base}`
+            ? `${left},${keepY} ${left},${residualBottom}`
             : flipped
               ? `${left},${top} ${left},${sideJoinY} ${lNarrow},${run.base}`
               : `${lNarrow},${top} ${left},${sideJoinY} ${left},${run.base}`;
@@ -240,7 +242,7 @@ function stackNodes(
 
         if (!nextHasMaterial) {
           const points = !run.kept
-            ? `${right},${keepY} ${right},${run.base}`
+            ? `${right},${keepY} ${right},${residualBottom}`
             : flipped
               ? `${right},${top} ${right},${sideJoinY} ${rNarrow},${run.base}`
               : `${rNarrow},${top} ${right},${sideJoinY} ${right},${run.base}`;
@@ -269,7 +271,7 @@ function stackNodes(
 
       if (run.kept || runKeepH > 0.01) {
         minTop = Math.min(minTop, run.kept ? top : keepY);
-        maxBottom = Math.max(maxBottom, run.base);
+        maxBottom = Math.max(maxBottom, run.kept ? run.base : residualBottom);
       }
     });
 
