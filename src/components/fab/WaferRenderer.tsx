@@ -376,9 +376,32 @@ function Isometric({ layers, refTotal }: { layers: Layer[]; refTotal?: number | 
 
   let z = 0;
   const nodes: React.ReactNode[] = [];
+  // Surface topography along x (extruded along y): piecewise-constant heights.
+  type PSeg = { a: number; b: number; z: number };
+  let profile: PSeg[] = [{ a: -SX, b: SX, z: 0 }];
+  // Patterned geometry such as isolated pillars is intentionally simplified
+  // to a flat profile for subsequent layers. Keep the nearest continuous
+  // support height separately so a conformal coating can close its perimeter
+  // down to that layer instead of appearing as a suspended slab.
+  let continuousSupportZ = 0;
+  let patternedSinceContinuous = false;
+  const mergeProfile = (segs: PSeg[]) => {
+    const out: PSeg[] = [];
+    for (const s of segs) {
+      if (s.b - s.a < 0.01) continue;
+      const last = out[out.length - 1];
+      if (last && Math.abs(last.z - s.z) < 0.01) last.b = s.b;
+      else out.push({ ...s });
+    }
+    return out;
+  };
+  const strokeC = "rgba(0,0,0,0.35)";
 
   layers.forEach((layer, i) => {
     const h = heights[i] ?? 6;
+    const maxZ = Math.max(...profile.map((s) => s.z));
+    const uneven = profile.length > 1;
+    z = maxZ;
     const zTop = z + h;
     const A = [-SX, -SY];
     const B = [SX, -SY];
@@ -386,22 +409,96 @@ function Isometric({ layers, refTotal }: { layers: Layer[]; refTotal?: number | 
     const D = [-SX, SY];
 
     const pattern = layer.patterned && layer.pattern?.kind !== "none" ? layer.pattern : undefined;
+    const conformal = layer.conformal !== false;
+    const planarize = conformal && !!layer.planarize;
+
+    // Unpatterned layer deposited over step topography: drape (conformal) or
+    // fill to a flat top (planarize / non-conformal).
+    if (!pattern && uneven) {
+      const drape = conformal && !planarize;
+      const sorted = [...profile].sort((s, t) => s.a - t.a);
+      const tops = sorted.map((s) => (drape ? s.z + h : zTop));
+      sorted.forEach((s, k) => {
+        const top = tops[k]!;
+        const nextTop = k < sorted.length - 1 ? tops[k + 1]! : -Infinity;
+        nodes.push(
+          <polygon
+            key={`${layer.id}-cf-${k}`}
+            points={`${p(s.a, SY, s.z)} ${p(s.b, SY, s.z)} ${p(s.b, SY, top)} ${p(s.a, SY, top)}`}
+            fill={shade(layer.color, 0.68)}
+            stroke={strokeC}
+            strokeWidth={0.6}
+          />,
+        );
+        if (nextTop < top - 0.01) {
+          const from = s.z;
+          nodes.push(
+            <polygon
+              key={`${layer.id}-cr-${k}`}
+              points={`${p(s.b, SY, from)} ${p(s.b, -SY, from)} ${p(s.b, -SY, top)} ${p(s.b, SY, top)}`}
+              fill={shade(layer.color, 0.85)}
+              stroke={strokeC}
+              strokeWidth={0.6}
+            />,
+          );
+        }
+        nodes.push(
+          <polygon
+            key={`${layer.id}-ct-${k}`}
+            points={`${p(s.a, -SY, top)} ${p(s.b, -SY, top)} ${p(s.b, SY, top)} ${p(s.a, SY, top)}`}
+            fill={layer.color}
+            stroke={strokeC}
+            strokeWidth={0.6}
+            opacity={layer.isResist ? 0.85 : 1}
+          />,
+        );
+      });
+      profile = drape
+        ? mergeProfile(sorted.map((s, k) => ({ a: s.a, b: s.b, z: tops[k]! })))
+        : [{ a: -SX, b: SX, z: zTop }];
+      continuousSupportZ = Math.min(...profile.map((s) => s.z));
+      patternedSinceContinuous = false;
+      return;
+    }
+
+    // update topography for the remaining cases
+    if (pattern && pattern.kind === "partialCover") {
+      const c = Math.max(0, Math.min(1, pattern.coverageFraction));
+      const xEdge = -SX + c * 2 * SX;
+      const inv = !!pattern.inverted;
+      const depth = Math.max(0, Math.min(1, layer.etchDepth ?? 1));
+      const [ra, rb] = inv ? [xEdge, SX] : [-SX, xEdge];
+      const next: PSeg[] = [];
+      for (const s of profile) {
+        // retained part
+        const ka = Math.max(s.a, ra), kb = Math.min(s.b, rb);
+        if (kb > ka) next.push({ a: ka, b: kb, z: zTop });
+        // removed parts
+        for (const [ea, eb] of [[s.a, Math.min(s.b, ra)], [Math.max(s.a, rb), s.b]] as const) {
+          if (eb > ea) next.push({ a: ea, b: eb, z: depth >= 0.999 ? s.z : zTop - h * depth });
+        }
+      }
+      profile = mergeProfile(next.sort((s, t) => s.a - t.a));
+    } else {
+      profile = [{ a: -SX, b: SX, z: zTop }];
+    }
 
     // A visible patterned layer is assembled from only its retained pieces
     // below. Drawing a complete slab first leaves a continuous sheet behind
     // inverted pillars and underneath openings.
     if (!pattern) {
+      const edgeBaseZ = conformal && patternedSinceContinuous ? continuousSupportZ : z;
       nodes.push(
         <polygon
           key={`${layer.id}-l`}
-          points={`${p(D[0]!, D[1]!, z)} ${p(C[0]!, C[1]!, z)} ${p(C[0]!, C[1]!, zTop)} ${p(D[0]!, D[1]!, zTop)}`}
+          points={`${p(D[0]!, D[1]!, edgeBaseZ)} ${p(C[0]!, C[1]!, edgeBaseZ)} ${p(C[0]!, C[1]!, zTop)} ${p(D[0]!, D[1]!, zTop)}`}
           fill={shade(layer.color, 0.68)}
           stroke="rgba(0,0,0,0.35)"
           strokeWidth={0.6}
         />,
         <polygon
           key={`${layer.id}-r`}
-          points={`${p(C[0]!, C[1]!, z)} ${p(B[0]!, B[1]!, z)} ${p(B[0]!, B[1]!, zTop)} ${p(C[0]!, C[1]!, zTop)}`}
+          points={`${p(C[0]!, C[1]!, edgeBaseZ)} ${p(B[0]!, B[1]!, edgeBaseZ)} ${p(B[0]!, B[1]!, zTop)} ${p(C[0]!, C[1]!, zTop)}`}
           fill={shade(layer.color, 0.85)}
           stroke="rgba(0,0,0,0.35)"
           strokeWidth={0.6}
@@ -425,7 +522,10 @@ function Isometric({ layers, refTotal }: { layers: Layer[]; refTotal?: number | 
       const below = i > 0 ? layers[i - 1] : undefined;
       const belowColor = below?.color ?? "transparent";
       const depth = Math.max(0, Math.min(1, layer.etchDepth ?? 1));
-      const floorZ = zTop - h * depth;
+      // Close the perimeter down to the nearest continuous layer when this
+      // layer sits on simplified (flat-profiled) patterned geometry.
+      const baseZ = conformal && patternedSinceContinuous ? continuousSupportZ : z;
+      const floorZ = depth >= 0.999 ? baseZ : zTop - h * depth;
       const wallColor = shade(layer.color, 0.62);
       if (pattern.kind === "holes") {
         const n = Math.max(1, Math.min(9, pattern.count));
@@ -518,14 +618,14 @@ function Isometric({ layers, refTotal }: { layers: Layer[]; refTotal?: number | 
             />,
             <polygon
               key={`${layer.id}-patterned-left`}
-              points={`${p(D[0]!, D[1]!, z)} ${p(C[0]!, C[1]!, z)} ${p(C[0]!, C[1]!, zTop)} ${p(D[0]!, D[1]!, zTop)}`}
+              points={`${p(D[0]!, D[1]!, baseZ)} ${p(C[0]!, C[1]!, baseZ)} ${p(C[0]!, C[1]!, zTop)} ${p(D[0]!, D[1]!, zTop)}`}
               fill={shade(layer.color, 0.68)}
               stroke="rgba(0,0,0,0.35)"
               strokeWidth={0.6}
             />,
             <polygon
               key={`${layer.id}-patterned-right`}
-              points={`${p(C[0]!, C[1]!, z)} ${p(B[0]!, B[1]!, z)} ${p(B[0]!, B[1]!, zTop)} ${p(C[0]!, C[1]!, zTop)}`}
+              points={`${p(C[0]!, C[1]!, baseZ)} ${p(B[0]!, B[1]!, baseZ)} ${p(B[0]!, B[1]!, zTop)} ${p(C[0]!, C[1]!, zTop)}`}
               fill={shade(layer.color, 0.85)}
               stroke="rgba(0,0,0,0.35)"
               strokeWidth={0.6}
@@ -540,6 +640,17 @@ function Isometric({ layers, refTotal }: { layers: Layer[]; refTotal?: number | 
         const retainedMinX = inverted ? xEdge : -SX;
         const retainedMaxX = inverted ? SX : xEdge;
         const pts = `${p(removedMinX, -SY, floorZ)} ${p(removedMaxX, -SY, floorZ)} ${p(removedMaxX, SY, floorZ)} ${p(removedMinX, SY, floorZ)}`;
+        if (floorZ - baseZ > 0.01) {
+          nodes.push(
+            <polygon
+              key={`${layer.id}-pc-floor-front`}
+              points={`${p(removedMinX, SY, baseZ)} ${p(removedMaxX, SY, baseZ)} ${p(removedMaxX, SY, floorZ)} ${p(removedMinX, SY, floorZ)}`}
+              fill={shade(layer.color, 0.68)}
+              stroke="rgba(0,0,0,0.35)"
+              strokeWidth={0.6}
+            />,
+          );
+        }
         nodes.push(
           <polygon
             key={`${layer.id}-pc-floor`}
@@ -553,7 +664,7 @@ function Isometric({ layers, refTotal }: { layers: Layer[]; refTotal?: number | 
           nodes.push(
             <polygon
               key={`${layer.id}-pc-front`}
-              points={`${p(retainedMinX, SY, floorZ)} ${p(retainedMaxX, SY, floorZ)} ${p(retainedMaxX, SY, zTop)} ${p(retainedMinX, SY, zTop)}`}
+              points={`${p(retainedMinX, SY, baseZ)} ${p(retainedMaxX, SY, baseZ)} ${p(retainedMaxX, SY, zTop)} ${p(retainedMinX, SY, zTop)}`}
               fill={shade(layer.color, 0.68)}
               stroke="rgba(0,0,0,0.35)"
               strokeWidth={0.6}
@@ -578,6 +689,11 @@ function Isometric({ layers, refTotal }: { layers: Layer[]; refTotal?: number | 
       }
     }
 
+    if (pattern) patternedSinceContinuous = true;
+    else {
+      continuousSupportZ = zTop;
+      patternedSinceContinuous = false;
+    }
     z = zTop;
   });
 
