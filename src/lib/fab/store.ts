@@ -21,7 +21,12 @@ type Actions = {
   setSubstrate: (changes: Partial<Layer>) => void;
   newFlow: () => void;
   loadFlow: (flow: ProcessFlow) => void;
-  addStep: (category: ProcessCategory, description?: string, transform?: StackTransform) => void;
+  addStep: (
+    category: ProcessCategory,
+    description?: string,
+    transform?: StackTransform,
+    atIndex?: number,
+  ) => void;
   addPresetStep: (preset: Preset) => void;
   updateStep: (id: string, changes: Partial<Omit<ProcessStep, "stackAfter">>) => void;
   duplicateStep: (id: string) => void;
@@ -85,7 +90,7 @@ export const useFabStore = create<State & Actions>((set, get) => {
 
     loadFlow: (flow) => commit(flow, { selectedStepId: null }),
 
-    addStep: (category, description = "", transform) => {
+    addStep: (category, description = "", transform, atIndex) => {
       const step: ProcessStep = {
         id: uid(),
         category,
@@ -94,7 +99,10 @@ export const useFabStore = create<State & Actions>((set, get) => {
         stackTransform: transform ?? { kind: "noChange" },
         stackAfter: [],
       };
-      commit({ ...get().flow, steps: [...get().flow.steps, step] }, { selectedStepId: step.id });
+      const steps = [...get().flow.steps];
+      const index = atIndex === undefined ? steps.length : Math.max(0, Math.min(atIndex, steps.length));
+      steps.splice(index, 0, step);
+      commit({ ...get().flow, steps }, { selectedStepId: step.id });
     },
 
     addPresetStep: (preset) => {
@@ -135,7 +143,7 @@ export const useFabStore = create<State & Actions>((set, get) => {
 
     moveStep: (from, to) => {
       const steps = [...get().flow.steps];
-      if (from < 0 || from >= steps.length || to < 0 || to >= steps.length) return;
+      if (from === to || from < 0 || from >= steps.length || to < 0 || to >= steps.length) return;
       const [m] = steps.splice(from, 1);
       if (!m) return;
       steps.splice(to, 0, m);

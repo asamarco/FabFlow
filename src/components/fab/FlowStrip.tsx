@@ -1,5 +1,14 @@
-import { useMemo, useState } from "react";
-import { Copy, Download, Eye, EyeOff, GripVertical, Trash2 } from "lucide-react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import {
+  ArrowDown,
+  ArrowUp,
+  Copy,
+  Download,
+  Eye,
+  EyeOff,
+  GripVertical,
+  Trash2,
+} from "lucide-react";
 import { useFabStore } from "@/lib/fab/store";
 import { stepLabel } from "@/lib/fab/categories";
 import { CategoryIcon } from "./CategoryIcon";
@@ -24,58 +33,144 @@ export function FlowStrip() {
     [flow],
   );
   const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const [overIndex, setOverIndex] = useState<number | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const [overSlot, setOverSlot] = useState<number | null>(null);
 
-  const handleDrop = (index: number) => (e: React.DragEvent) => {
+  useEffect(() => {
+    const clear = () => {
+      setDragIndex(null);
+      setDragActive(false);
+      setOverSlot(null);
+    };
+    window.addEventListener("dragend", clear);
+    window.addEventListener("drop", clear);
+    return () => {
+      window.removeEventListener("dragend", clear);
+      window.removeEventListener("drop", clear);
+    };
+  }, []);
+
+  const clearDrag = () => {
+    setDragIndex(null);
+    setDragActive(false);
+    setOverSlot(null);
+  };
+
+  const handleDrop = (slotIndex: number) => (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     const category = e.dataTransfer.getData("application/x-fab-category") as ProcessCategory;
     if (category) {
-      addStep(category);
+      addStep(category, "", undefined, slotIndex);
     } else if (dragIndex !== null) {
-      moveStep(dragIndex, index);
+      const destination = slotIndex > dragIndex ? slotIndex - 1 : slotIndex;
+      if (destination !== dragIndex) moveStep(dragIndex, destination);
     }
-    setDragIndex(null);
-    setOverIndex(null);
+    clearDrag();
   };
+
+  const dropZone = (slotIndex: number) => (
+    <li
+      key={`drop-${slotIndex}`}
+      aria-label={`Drop step at position ${slotIndex + 1}`}
+      onDragEnter={(e) => {
+        e.preventDefault();
+        setOverSlot(slotIndex);
+      }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = dragIndex === null ? "copy" : "move";
+        setOverSlot(slotIndex);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+          setOverSlot((current) => (current === slotIndex ? null : current));
+        }
+      }}
+      onDrop={handleDrop(slotIndex)}
+      className={cn(
+        "flex min-h-[230px] w-9 shrink-0 items-stretch justify-center rounded-md transition-colors",
+        dragActive && "border border-dashed border-primary/50 bg-primary/5",
+        overSlot === slotIndex && "border-primary bg-primary/15 ring-2 ring-primary/50",
+      )}
+    >
+      <div
+        className={cn(
+          "my-3 w-px bg-border transition-all",
+          dragActive && "my-2 w-0.5 bg-primary/50",
+          overSlot === slotIndex && "w-1 bg-primary",
+        )}
+      />
+      <span className="sr-only">Drop here</span>
+    </li>
+  );
 
   return (
     <div
       className="min-h-0 flex-1 overflow-auto p-6"
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={handleDrop(flow.steps.length - 1)}
+      onDragEnter={(e) => {
+        if (Array.from(e.dataTransfer.types).includes("application/x-fab-category")) {
+          setDragActive(true);
+        }
+      }}
+      onDragEnd={clearDrag}
     >
       {flow.steps.length === 0 ? (
-        <div className="flex h-full min-h-64 items-center justify-center rounded-lg border border-dashed border-border">
+        <div
+          onDragEnter={(e) => {
+            e.preventDefault();
+            setDragActive(true);
+            setOverSlot(0);
+          }}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={handleDrop(0)}
+          className={cn(
+            "flex h-full min-h-64 items-center justify-center rounded-lg border border-dashed border-border transition-colors",
+            dragActive && "border-primary bg-primary/5 ring-2 ring-primary/30",
+          )}
+        >
           <p className="max-w-sm text-center text-sm text-muted-foreground">
-            Pick a process category from the library on the left — or drag its icon here — to add the
-            first step of your flow.
+            {dragActive
+              ? "Drop here to add the first step"
+              : "Pick a process category from the library on the left — or drag its icon here — to add the first step of your flow."}
           </p>
         </div>
       ) : (
-        <ol className="flex flex-wrap gap-4">
+        <ol className="flex flex-wrap items-stretch gap-y-4">
+          {dropZone(0)}
           {flow.steps.map((step, i) => {
             const selected = step.id === selectedStepId;
             return (
-              <li
-                key={step.id}
-                draggable
-                onDragStart={() => setDragIndex(i)}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setOverIndex(i);
-                }}
-                onDragLeave={() => setOverIndex((v) => (v === i ? null : v))}
-                onDrop={handleDrop(i)}
-                onClick={() => selectStep(step.id)}
-                className={cn(
-                  "w-[280px] cursor-pointer rounded-lg border bg-card transition-shadow",
-                  step.hidden && "opacity-55",
-                  selected ? "border-primary shadow-[0_0_0_1px_var(--color-primary)]" : "border-border",
-                  overIndex === i && dragIndex !== null && "ring-2 ring-primary/60",
-                )}
-              >
-                <header className="flex items-center gap-2 border-b border-border px-3 py-2">
-                  <GripVertical className="size-4 shrink-0 cursor-grab text-muted-foreground" />
+              <Fragment key={step.id}>
+                <li
+                  onClick={() => selectStep(step.id)}
+                  className={cn(
+                    "w-[280px] cursor-pointer rounded-lg border bg-card transition-shadow",
+                    step.hidden && "opacity-55",
+                    selected ? "border-primary shadow-[0_0_0_1px_var(--color-primary)]" : "border-border",
+                    dragIndex === i && "opacity-40",
+                  )}
+                >
+                <header className="flex items-center gap-1 border-b border-border px-2 py-2">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    draggable
+                    className="size-7 shrink-0 cursor-grab active:cursor-grabbing"
+                    aria-label={`Drag step ${i + 1} to reorder`}
+                    title="Drag to reorder"
+                    onClick={(e) => e.stopPropagation()}
+                    onDragStart={(e) => {
+                      e.stopPropagation();
+                      e.dataTransfer.effectAllowed = "move";
+                      e.dataTransfer.setData("application/x-fab-step", step.id);
+                      setDragIndex(i);
+                      setDragActive(true);
+                    }}
+                    onDragEnd={clearDrag}
+                  >
+                    <GripVertical className="size-4 text-muted-foreground" />
+                  </Button>
                   <span className="font-mono text-xs text-muted-foreground">
                     {String(i + 1).padStart(2, "0")}
                   </span>
@@ -88,6 +183,34 @@ export function FlowStrip() {
                       hidden
                     </span>
                   )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-6"
+                    aria-label={`Move step ${i + 1} up`}
+                    title="Move step up"
+                    disabled={i === 0}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      moveStep(i, i - 1);
+                    }}
+                  >
+                    <ArrowUp className="size-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-6"
+                    aria-label={`Move step ${i + 1} down`}
+                    title="Move step down"
+                    disabled={i === flow.steps.length - 1}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      moveStep(i, i + 1);
+                    }}
+                  >
+                    <ArrowDown className="size-3.5" />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon"
@@ -151,7 +274,9 @@ export function FlowStrip() {
                     <span className="italic">No description yet — select the step to add one.</span>
                   )}
                 </p>
-              </li>
+                </li>
+                {dropZone(i + 1)}
+              </Fragment>
             );
           })}
         </ol>
