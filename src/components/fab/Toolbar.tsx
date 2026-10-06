@@ -41,7 +41,7 @@ export function Toolbar() {
       <input
         ref={fileRef}
         type="file"
-        accept="application/json"
+        accept=".flow,.json,application/json"
         className="hidden"
         onChange={async (e) => {
           const file = e.target.files?.[0];
@@ -62,7 +62,7 @@ export function Toolbar() {
       <Button
         variant="outline"
         size="sm"
-        onClick={() => download(`${slug}.json`, JSON.stringify(flow, null, 2), "application/json")}
+        onClick={() => download(`${slug}.flow`, JSON.stringify(flow, null, 2), "application/json")}
       >
         <FileJson className="size-4" /> Save JSON
       </Button>
