@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -70,7 +70,7 @@ export function FlowStrip() {
   };
 
   const dropZone = (slotIndex: number) => (
-    <li
+    <div
       key={`drop-${slotIndex}`}
       aria-label={`Drop step at position ${slotIndex + 1}`}
       onDragEnter={(e) => {
@@ -102,7 +102,7 @@ export function FlowStrip() {
         )}
       />
       <span className="sr-only">Drop here</span>
-    </li>
+    </div>
   );
 
   return (
@@ -137,12 +137,12 @@ export function FlowStrip() {
         </div>
       ) : (
         <ol className="flex flex-wrap items-stretch gap-y-4">
-          {dropZone(0)}
           {flow.steps.map((step, i) => {
             const selected = step.id === selectedStepId;
             return (
-              <Fragment key={step.id}>
-                <li
+              <li key={step.id} className="flex items-stretch">
+                {dropZone(i)}
+                <div
                   onClick={() => selectStep(step.id)}
                   className={cn(
                     "w-[280px] cursor-pointer rounded-lg border bg-card transition-shadow",
@@ -274,11 +274,11 @@ export function FlowStrip() {
                     <span className="italic">No description yet — select the step to add one.</span>
                   )}
                 </p>
-                </li>
-                {dropZone(i + 1)}
-              </Fragment>
+                </div>
+              </li>
             );
           })}
+          <li className="flex items-stretch">{dropZone(flow.steps.length)}</li>
         </ol>
       )}
     </div>
