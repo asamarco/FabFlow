@@ -57,14 +57,14 @@ export function Toolbar() {
         }}
       />
       <Button variant="outline" size="sm" onClick={() => fileRef.current?.click()}>
-        <FileJson className="size-4" /> Load JSON
+        <FileJson className="size-4" /> Load flow
       </Button>
       <Button
         variant="outline"
         size="sm"
         onClick={() => download(`${slug}.flow`, JSON.stringify(flow, null, 2), "application/json")}
       >
-        <FileJson className="size-4" /> Save JSON
+        <FileJson className="size-4" /> Save flow
       </Button>
 
       <div className="ml-auto flex items-center gap-2">
