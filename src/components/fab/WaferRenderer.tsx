@@ -43,7 +43,7 @@ export function segmentsFor(layer: Layer): Seg[] {
 const MIN_H = 5;
 
 const totalThickness = (layers: Layer[]) =>
-  layers.reduce((sum, l) => sum + Math.max(1, l.thickness), 0) || 1;
+  layers.reduce((sum, l) => sum + Math.max(0, l.thickness), 0) || 1;
 
 /**
  * Reference total thickness shared by every step so a given layer keeps the
@@ -65,7 +65,9 @@ export function referenceTotal(stacks: Layer[][]): number {
 
 function scaleThicknesses(layers: Layer[], available: number, refTotal?: number) {
   const total = refTotal && refTotal > 0 ? refTotal : totalThickness(layers);
-  return layers.map((l) => Math.max(MIN_H, (Math.max(1, l.thickness) / total) * available));
+  return layers.map((l) =>
+    l.thickness <= 0 ? 0 : Math.max(MIN_H, (l.thickness / total) * available),
+  );
 }
 
 /* ---------------------------------- 2D ---------------------------------- */

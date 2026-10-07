@@ -353,11 +353,11 @@ function LayerFields({
       <div className="space-y-1.5">
         <Label>Thickness ({layer.thickness})</Label>
         <Slider
-          min={1}
+          min={0}
           max={200}
           step={1}
           value={[layer.thickness]}
-          onValueChange={([v]) => onChange({ thickness: v ?? 1 })}
+          onValueChange={([v]) => onChange({ thickness: v ?? 0 })}
         />
       </div>
       <div className="flex items-center justify-between">
