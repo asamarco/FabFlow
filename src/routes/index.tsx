@@ -33,7 +33,7 @@ function Index() {
   }, [hydrate]);
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-background text-foreground">
+    <div className="flex h-dvh flex-col overflow-hidden bg-background text-foreground">
       <h1 className="sr-only">Microfabrication process flow designer</h1>
       <Toolbar />
       <div className="flex min-h-0 flex-1">
