@@ -1,5 +1,5 @@
-import { useRef } from "react";
-import { Boxes, FilePlus2, FileJson, ImageDown, Layers, Presentation } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { Boxes, FilePlus2, FileJson, ImageDown, Layers, Presentation, Redo2, Undo2 } from "lucide-react";
 import { useFabStore } from "@/lib/fab/store";
 import { download, downloadPng, exportPptx, storyboardSvg } from "@/lib/fab/export";
 import { recompute } from "@/lib/fab/stack";
@@ -17,6 +17,28 @@ export function Toolbar() {
   const newFlow = useFabStore((s) => s.newFlow);
   const loadFlow = useFabStore((s) => s.loadFlow);
   const fileRef = useRef<HTMLInputElement>(null);
+  const undo = useFabStore((s) => s.undo);
+  const redo = useFabStore((s) => s.redo);
+  const canUndo = useFabStore((s) => s.past.length > 0);
+  const canRedo = useFabStore((s) => s.future.length > 0);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      const k = e.key.toLowerCase();
+      if (k === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if (k === "y" || (k === "z" && e.shiftKey)) {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
 
   const slug = flow.name.replace(/\s+/g, "_") || "process_flow";
 
@@ -33,6 +55,13 @@ export function Toolbar() {
         className="h-8 w-64"
         aria-label="Flow name"
       />
+
+      <Button variant="outline" size="icon" className="size-8" onClick={undo} disabled={!canUndo} aria-label="Undo" title="Undo (Ctrl+Z)">
+        <Undo2 className="size-4" />
+      </Button>
+      <Button variant="outline" size="icon" className="size-8" onClick={redo} disabled={!canRedo} aria-label="Redo" title="Redo (Ctrl+Shift+Z / Ctrl+Y)">
+        <Redo2 className="size-4" />
+      </Button>
 
       <Button variant="outline" size="sm" onClick={() => newFlow()}>
         <FilePlus2 className="size-4" /> New

@@ -12,10 +12,14 @@ type State = {
   selectedStepId: string | null;
   viewMode: ViewMode;
   hydrated: boolean;
+  past: ProcessFlow[];
+  future: ProcessFlow[];
 };
 
 type Actions = {
   hydrate: () => void;
+  undo: () => void;
+  redo: () => void;
   setViewMode: (m: ViewMode) => void;
   setFlowName: (name: string) => void;
   setSubstrate: (changes: Partial<Layer>) => void;
@@ -45,8 +49,18 @@ const persist = (s: State) => {
 };
 
 export const useFabStore = create<State & Actions>((set, get) => {
-  const commit = (flow: ProcessFlow, extra: Partial<State> = {}) => {
-    const next = { ...get(), flow: recompute(flow), ...extra } as State;
+  let lastCommit = 0;
+  let lastKey = "";
+  const HISTORY_LIMIT = 100;
+  const commit = (flow: ProcessFlow, extra: Partial<State> = {}, key = "") => {
+    const now = Date.now();
+    const s = get();
+    // Coalesce rapid edits of the same field (sliders, typing) into one undo entry.
+    const coalesce = key !== "" && key === lastKey && now - lastCommit < 600;
+    lastCommit = now;
+    lastKey = key;
+    const past = coalesce ? s.past : [...s.past, s.flow].slice(-HISTORY_LIMIT);
+    const next = { ...s, flow: recompute(flow), past, future: [], ...extra } as State;
     set(next);
     persist(next);
   };
@@ -57,6 +71,42 @@ export const useFabStore = create<State & Actions>((set, get) => {
     selectedStepId: null,
     viewMode: "cross",
     hydrated: false,
+    past: [],
+    future: [],
+
+    undo: () => {
+      const s = get();
+      const prev = s.past[s.past.length - 1];
+      if (!prev) return;
+      lastKey = "";
+      const keepSel = prev.steps.some((st) => st.id === s.selectedStepId);
+      const next = {
+        ...s,
+        flow: prev,
+        past: s.past.slice(0, -1),
+        future: [s.flow, ...s.future],
+        selectedStepId: keepSel ? s.selectedStepId : null,
+      } as State;
+      set(next);
+      persist(next);
+    },
+
+    redo: () => {
+      const s = get();
+      const nxt = s.future[0];
+      if (!nxt) return;
+      lastKey = "";
+      const keepSel = nxt.steps.some((st) => st.id === s.selectedStepId);
+      const next = {
+        ...s,
+        flow: nxt,
+        past: [...s.past, s.flow],
+        future: s.future.slice(1),
+        selectedStepId: keepSel ? s.selectedStepId : null,
+      } as State;
+      set(next);
+      persist(next);
+    },
 
     hydrate: () => {
       if (get().hydrated || typeof window === "undefined") return;
@@ -81,10 +131,14 @@ export const useFabStore = create<State & Actions>((set, get) => {
       persist(get());
     },
 
-    setFlowName: (name) => commit({ ...get().flow, name }),
+    setFlowName: (name) => commit({ ...get().flow, name }, {}, "name"),
 
     setSubstrate: (changes) =>
-      commit({ ...get().flow, substrate: { ...get().flow.substrate, ...changes } }),
+      commit(
+        { ...get().flow, substrate: { ...get().flow.substrate, ...changes } },
+        {},
+        `substrate:${Object.keys(changes).join(",")}`,
+      ),
 
     newFlow: () => commit(emptyFlow(), { selectedStepId: null }),
 
@@ -122,7 +176,7 @@ export const useFabStore = create<State & Actions>((set, get) => {
       commit({
         ...get().flow,
         steps: get().flow.steps.map((s) => (s.id === id ? { ...s, ...changes } : s)),
-      }),
+      }, {}, `step:${id}:${Object.keys(changes).join(",")}`),
 
     duplicateStep: (id) => {
       const steps = get().flow.steps;
