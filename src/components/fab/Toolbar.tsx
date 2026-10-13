@@ -91,7 +91,18 @@ export function Toolbar() {
       <Button
         variant="outline"
         size="sm"
-        onClick={() => download(`${slug}.flow`, JSON.stringify(flow, null, 2), "application/json")}
+        onClick={() => {
+        const cleanFlow = {
+          ...flow,
+          steps: flow.steps.map(({ stackAfter, ...rest }) => rest),
+        };
+
+        download(
+           `${slug}.flow`,
+           JSON.stringify(cleanFlow, null, 2),
+           "application/json"
+           );
+        }}
       >
         <FileJson className="size-4" /> Save flow
       </Button>
