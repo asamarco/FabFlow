@@ -318,14 +318,57 @@ function CrossSection({
   const up = stackNodes(aboveLayers, aboveHeights, x0, w, baseY, labels);
   const down = stackNodes(belowLayers, belowHeights, x0, w, baseY, labels);
 
-  const labelNodes = [
-    ...up.labelItems.map((l) => ({ ...l, y: l.y })),
-    ...down.labelItems.map((l) => ({ ...l, y: 2 * baseY - l.y })),
-  ].map((l) => (
-    <text key={l.key} x={x0 + w + 6} y={l.y + 3} fontSize={7} fill="currentColor" opacity={0.75}>
-      {l.text}
-    </text>
-  ));
+  // Resolve label collisions: enforce a minimum pitch while staying close to targets.
+  const PITCH = 8.5;
+  const items = [
+    ...up.labelItems.map((l) => ({ ...l, target: l.y })),
+    ...down.labelItems.map((l) => ({ ...l, target: 2 * baseY - l.y })),
+  ].sort((a, b) => a.target - b.target);
+  // cluster-merge relaxation: each cluster centered on its targets' mean
+  type Cl = { start: number; n: number; center: number };
+  const clusters: Cl[] = [];
+  items.forEach((_, i) => {
+    clusters.push({ start: i, n: 1, center: items[i]!.target });
+    while (clusters.length > 1) {
+      const b = clusters[clusters.length - 1]!;
+      const a = clusters[clusters.length - 2]!;
+      const aEnd = a.center + ((a.n - 1) * PITCH) / 2;
+      const bStart = b.center - ((b.n - 1) * PITCH) / 2;
+      if (bStart - aEnd >= PITCH) break;
+      const n = a.n + b.n;
+      const sum = items.slice(a.start, a.start + n).reduce((s, it) => s + it.target, 0);
+      clusters.splice(clusters.length - 2, 2, { start: a.start, n, center: sum / n });
+    }
+  });
+  const minY = 6;
+  const maxY = RENDER_H - 4;
+  const ys: number[] = [];
+  clusters.forEach((c) => {
+    let first = c.center - ((c.n - 1) * PITCH) / 2;
+    first = Math.max(minY, Math.min(first, maxY - (c.n - 1) * PITCH));
+    for (let k = 0; k < c.n; k++) ys.push(first + k * PITCH);
+  });
+  const lx = x0 + w + 6;
+  const labelNodes = items.map((l, i) => {
+    const y = ys[i] ?? l.target;
+    const moved = Math.abs(y - l.target) > 2;
+    return (
+      <g key={l.key}>
+        {moved && (
+          <polyline
+            points={`${x0 + w + 0.5},${l.target} ${x0 + w + 3},${l.target} ${lx - 1},${y}`}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={0.4}
+            opacity={0.5}
+          />
+        )}
+        <text x={lx} y={y + 2.5} fontSize={7} fill="currentColor" opacity={0.75}>
+          {l.text}
+        </text>
+      </g>
+    );
+  });
 
   return (
     <>
