@@ -1,13 +1,15 @@
 import { useMemo, useState } from "react";
-import { Search, Trash2 } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, Search, Trash2 } from "lucide-react";
 import { CATEGORIES } from "@/lib/fab/categories";
 import { useFabStore } from "@/lib/fab/store";
 import { CategoryIcon } from "./CategoryIcon";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 export function LibraryPanel() {
   const [q, setQ] = useState("");
+  const [collapsed, setCollapsed] = useState(false);
   const addStep = useFabStore((s) => s.addStep);
   const presets = useFabStore((s) => s.presets);
   const addPresetStep = useFabStore((s) => s.addPresetStep);
@@ -30,11 +32,14 @@ export function LibraryPanel() {
   }, [presets, q]);
 
   return (
-    <aside className="flex h-full w-72 shrink-0 flex-col border-r border-border bg-card">
-      <div className="border-b border-border p-3">
-        <h2 className="mb-2 font-mono text-xs uppercase tracking-widest text-muted-foreground">
-          Process library
-        </h2>
+    <aside aria-label="Process library" className={cn("flex h-full shrink-0 flex-col border-r border-border bg-card", collapsed ? "w-16" : "w-72")}>
+      <div className={cn("flex items-center border-b border-border", collapsed ? "justify-center p-2" : "justify-between px-3 pt-3")}>
+        {!collapsed && <h2 className="font-mono text-xs uppercase tracking-widest text-muted-foreground">Process library</h2>}
+        <Button variant="ghost" size="icon" className="size-8" aria-label={collapsed ? "Expand process library" : "Collapse process library"} title={collapsed ? "Expand process library" : "Collapse process library"} aria-expanded={!collapsed} onClick={() => setCollapsed((value) => !value)}>
+          {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+        </Button>
+      </div>
+      {!collapsed && <div className="border-b border-border p-3">
         <div className="relative">
           <Search className="pointer-events-none absolute left-2 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
@@ -44,27 +49,28 @@ export function LibraryPanel() {
             className="pl-8"
           />
         </div>
-      </div>
+      </div>}
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
-        <div className="grid grid-cols-2 gap-2">
-          {filtered.map((c) => (
+      <div className={cn("min-h-0 flex-1 overflow-y-auto", collapsed ? "p-2" : "p-3")}>
+        <div className={cn("grid gap-2", collapsed ? "grid-cols-1" : "grid-cols-2")}>
+          {(collapsed ? CATEGORIES : filtered).map((c) => (
             <Button
               key={c.id}
               variant="outline"
               draggable
               onDragStart={(e) => e.dataTransfer.setData("application/x-fab-category", c.id)}
               onClick={() => addStep(c.id)}
-              title={c.hint}
-              className="group h-auto min-h-20 flex-col gap-2 whitespace-normal p-3 text-center hover:border-primary"
+              title={`${c.label} — ${c.hint}`}
+              aria-label={c.label}
+              className={cn("group whitespace-normal text-center hover:border-primary", collapsed ? "size-11 p-2" : "h-auto min-h-20 flex-col gap-2 p-3")}
             >
-              <CategoryIcon category={c.id} size={30} />
-              <span className="text-[0.7rem] font-medium leading-tight">{c.label}</span>
+              <CategoryIcon category={c.id} size={collapsed ? 22 : 30} />
+              {!collapsed && <span className="text-[0.7rem] font-medium leading-tight">{c.label}</span>}
             </Button>
           ))}
         </div>
 
-        <h2 className="mb-2 mt-6 font-mono text-xs uppercase tracking-widest text-muted-foreground">
+        {!collapsed && <><h2 className="mb-2 mt-6 font-mono text-xs uppercase tracking-widest text-muted-foreground">
           Presets
         </h2>
         {filteredPresets.length === 0 ? (
@@ -95,7 +101,7 @@ export function LibraryPanel() {
               </li>
             ))}
           </ul>
-        )}
+        )}</>}
       </div>
 
     </aside>
