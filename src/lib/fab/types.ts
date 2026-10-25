@@ -80,6 +80,8 @@ export type ProcessFlow = {
   id: string;
   name: string;
   substrate: Layer;
+  /** Omitted from visual exports unless explicitly set to false. */
+  substrateHidden?: boolean;
   steps: ProcessStep[];
 };
 

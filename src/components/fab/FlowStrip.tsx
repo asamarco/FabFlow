@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { download, stepSvg } from "@/lib/fab/export";
 import type { ProcessCategory } from "@/lib/fab/types";
+import { substrateStep } from "@/lib/fab/presentation";
 
 export function FlowStrip() {
   const flow = useFabStore((s) => s.flow);
@@ -28,6 +29,8 @@ export function FlowStrip() {
   const updateStep = useFabStore((s) => s.updateStep);
   const moveStep = useFabStore((s) => s.moveStep);
   const addStep = useFabStore((s) => s.addStep);
+  const setSubstrateHidden = useFabStore((s) => s.setSubstrateHidden);
+  const substrate = substrateStep(flow);
   const refTotal = useMemo(
     () => referenceTotal([[flow.substrate], ...flow.steps.map((s) => s.stackAfter)]),
     [flow],
@@ -115,7 +118,33 @@ export function FlowStrip() {
       }}
       onDragEnd={clearDrag}
     >
+      <ol className="flex flex-wrap items-stretch gap-y-4">
+        <li className="flex items-stretch pl-9">
+          <div
+            role="button"
+            tabIndex={0}
+            aria-label="Edit substrate"
+            aria-pressed={selectedStepId === null}
+            onClick={() => selectStep(null)}
+            onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); selectStep(null); } }}
+            className={cn("w-[280px] cursor-pointer rounded-lg border bg-card transition-shadow", substrate.hidden && "opacity-55", selectedStepId === null ? "border-primary ring-1 ring-primary" : "border-border")}
+          >
+            <header className="flex items-center gap-2 border-b border-border px-3 py-2">
+              <CategoryIcon category="custom" customIcon="Layers" size={22} />
+              <span className="min-w-0 flex-1 text-xs font-medium">Substrate</span>
+              {substrate.hidden && <span className="rounded border border-border px-1 font-mono text-[10px] uppercase text-muted-foreground">hidden</span>}
+              <Button variant="ghost" size="icon" className="size-6" aria-label={substrate.hidden ? "Show substrate in export" : "Hide substrate from export"} title={substrate.hidden ? "Show substrate in export" : "Hide substrate from export"} onClick={(e) => { e.stopPropagation(); setSubstrateHidden(!substrate.hidden); }}>
+                {substrate.hidden ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+              </Button>
+            </header>
+            <div className="bg-background/40 px-2 pt-2 text-foreground">
+              <WaferRenderer layers={[flow.substrate]} refTotal={refTotal} mode={viewMode} labels={viewMode === "cross"} className="h-[150px] w-full" />
+            </div>
+            <p className="px-3 pb-3 pt-1 text-xs text-muted-foreground">{flow.substrate.material}</p>
+          </div>
+        </li>
       {flow.steps.length === 0 ? (
+        <li className="flex min-w-0 flex-1 pl-9">
         <div
           onDragEnter={(e) => {
             e.preventDefault();
@@ -124,8 +153,8 @@ export function FlowStrip() {
           }}
           onDragOver={(e) => e.preventDefault()}
           onDrop={handleDrop(0)}
-          className={cn(
-            "flex h-full min-h-64 items-center justify-center rounded-lg border border-dashed border-border transition-colors",
+           className={cn(
+             "flex min-h-64 w-full items-center justify-center rounded-lg border border-dashed border-border p-4 transition-colors",
             dragActive && "border-primary bg-primary/5 ring-2 ring-primary/30",
           )}
         >
@@ -135,8 +164,9 @@ export function FlowStrip() {
               : "Pick a process category from the library on the left — or drag its icon here — to add the first step of your flow."}
           </p>
         </div>
+        </li>
       ) : (
-        <ol className="flex flex-wrap items-stretch gap-y-4">
+        <>
           {flow.steps.map((step, i) => {
             const selected = step.id === selectedStepId;
             return (
@@ -279,8 +309,9 @@ export function FlowStrip() {
             );
           })}
           <li className="flex items-stretch">{dropZone(flow.steps.length)}</li>
-        </ol>
+        </>
       )}
+      </ol>
     </div>
   );
 }

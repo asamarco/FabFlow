@@ -40,6 +40,7 @@ export function StepInspector() {
   const updateStep = useFabStore((s) => s.updateStep);
   const savePreset = useFabStore((s) => s.savePreset);
   const setSubstrate = useFabStore((s) => s.setSubstrate);
+  const setSubstrateHidden = useFabStore((s) => s.setSubstrateHidden);
   const [presetName, setPresetName] = useState("");
 
   const index = flow.steps.findIndex((s) => s.id === selectedStepId);
@@ -48,10 +49,14 @@ export function StepInspector() {
 
   if (!step) {
     return (
-      <aside className="flex h-full w-80 shrink-0 flex-col gap-4 border-l border-border bg-card p-4">
+      <aside className="flex h-full w-80 shrink-0 flex-col gap-4 overflow-y-auto border-l border-border bg-card p-4">
         <h2 className="font-mono text-xs uppercase tracking-widest text-muted-foreground">
           Substrate
         </h2>
+        <div className="flex items-center justify-between gap-2">
+          <Label htmlFor="substrate-hidden">Hidden from export</Label>
+          <Switch id="substrate-hidden" checked={flow.substrateHidden !== false} onCheckedChange={setSubstrateHidden} />
+        </div>
         <LayerFields
           layer={flow.substrate}
           onChange={(changes) => setSubstrate(changes)}

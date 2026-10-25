@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
 import { RENDER_H, RENDER_W, WaferRenderer, referenceTotal } from "@/components/fab/WaferRenderer";
 import { stepIcon, stepLabel } from "./categories";
+import { exportSteps } from "./presentation";
 import type { ProcessFlow, ProcessStep, ViewMode } from "./types";
 
 const FG = "#0f172a";
@@ -74,7 +75,7 @@ export function storyboardSvg(flow: ProcessFlow, mode: ViewMode, perRow = 5) {
   const cardW = RENDER_W;
   const cardH = RENDER_H + 72;
   const gap = 14;
-  const visible = flow.steps.filter((s) => !s.hidden);
+  const visible = exportSteps(flow);
   const cols = Math.min(perRow, Math.max(1, visible.length));
   const rows = Math.ceil(visible.length / cols) || 1;
   const W = cols * cardW + (cols + 1) * gap;
@@ -156,7 +157,7 @@ export async function exportPptx(flow: ProcessFlow, mode: ViewMode) {
   pptx.layout = "LAYOUT_16x9";
 
   const refTotal = referenceTotal([[flow.substrate], ...flow.steps.map((s) => s.stackAfter)]);
-  const visible = flow.steps.filter((s) => !s.hidden);
+  const visible = exportSteps(flow);
   const perSlide = 4;
   for (let i = 0; i < visible.length; i += perSlide) {
     const slide = pptx.addSlide();

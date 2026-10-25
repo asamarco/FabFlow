@@ -23,6 +23,7 @@ type Actions = {
   setViewMode: (m: ViewMode) => void;
   setFlowName: (name: string) => void;
   setSubstrate: (changes: Partial<Layer>) => void;
+  setSubstrateHidden: (hidden: boolean) => void;
   newFlow: () => void;
   loadFlow: (flow: ProcessFlow) => void;
   addStep: (
@@ -141,6 +142,7 @@ export const useFabStore = create<State & Actions>((set, get) => {
       ),
 
     newFlow: () => commit(emptyFlow(), { selectedStepId: null }),
+    setSubstrateHidden: (substrateHidden) => commit({ ...get().flow, substrateHidden }),
 
     loadFlow: (flow) => commit(flow, { selectedStepId: null }),
 
