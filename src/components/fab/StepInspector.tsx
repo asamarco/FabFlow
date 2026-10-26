@@ -473,6 +473,32 @@ function LayerFields({
                       }
                     />
                   </div>
+                  {(["offsetX", "offsetY"] as const).map((key) => (
+                    <div key={key} className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <Label>
+                          {key === "offsetX" ? "Lateral offset" : "Depth offset (3D)"} (
+                          {Math.round((pattern[key] ?? 0) * 100)}%)
+                        </Label>
+                        {(pattern[key] ?? 0) !== 0 && (
+                          <button
+                            type="button"
+                            className="text-xs text-muted-foreground hover:text-foreground"
+                            onClick={() => onChange({ pattern: { ...pattern, [key]: 0 } })}
+                          >
+                            Center
+                          </button>
+                        )}
+                      </div>
+                      <Slider
+                        min={-40}
+                        max={40}
+                        step={1}
+                        value={[(pattern[key] ?? 0) * 100]}
+                        onValueChange={([v]) => onChange({ pattern: { ...pattern, [key]: (v ?? 0) / 100 } })}
+                      />
+                    </div>
+                  ))}
                   <Select
                     value={pattern.layout}
                     onValueChange={(layout) =>
@@ -491,18 +517,35 @@ function LayerFields({
               )}
 
               {pattern.kind === "partialCover" && (
-                <div className="space-y-1.5">
-                  <Label>Coverage ({Math.round(pattern.coverageFraction * 100)}%)</Label>
-                  <Slider
-                    min={0}
-                    max={100}
-                    step={5}
-                    value={[pattern.coverageFraction * 100]}
-                    onValueChange={([v]) =>
-                      onChange({ pattern: { ...pattern, coverageFraction: (v ?? 0) / 100 } })
-                    }
-                  />
-                </div>
+                <>
+                  <div className="space-y-1.5">
+                    <Label>Coverage ({Math.round(pattern.coverageFraction * 100)}%)</Label>
+                    <Slider
+                      min={0}
+                      max={100}
+                      step={5}
+                      value={[pattern.coverageFraction * 100]}
+                      onValueChange={([v]) => {
+                        const c = (v ?? 0) / 100;
+                        onChange({
+                          pattern: { ...pattern, coverageFraction: c, offset: Math.min(pattern.offset ?? 0, 1 - c) },
+                        });
+                      }}
+                    />
+                  </div>
+                  {pattern.coverageFraction < 1 && (
+                    <div className="space-y-1.5">
+                      <Label>Position ({Math.round((pattern.offset ?? 0) * 100)}% from left)</Label>
+                      <Slider
+                        min={0}
+                        max={Math.round((1 - pattern.coverageFraction) * 100)}
+                        step={1}
+                        value={[(pattern.offset ?? 0) * 100]}
+                        onValueChange={([v]) => onChange({ pattern: { ...pattern, offset: (v ?? 0) / 100 } })}
+                      />
+                    </div>
+                  )}
+                </>
               )}
 
               {pattern.kind !== "none" && (

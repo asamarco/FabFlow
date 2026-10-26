@@ -1,4 +1,5 @@
 import type { Layer, ViewMode } from "@/lib/fab/types";
+import { OFFSET_LIMIT, clampHoleShift, partialCoverRange } from "@/lib/fab/pattern";
 
 export const RENDER_W = 260;
 export const RENDER_H = 170;
@@ -20,17 +21,18 @@ export function segmentsFor(layer: Layer): Seg[] {
   if (!layer.patterned || !layer.pattern || layer.pattern.kind === "none") return [[0, 1]];
   const inverted = !!layer.pattern.inverted;
   if (layer.pattern.kind === "partialCover") {
-    const c = Math.max(0, Math.min(1, layer.pattern.coverageFraction));
-    const segs: Seg[] = c <= 0 ? [] : [[0, c]];
+    const [s, e] = partialCoverRange(layer.pattern.coverageFraction, layer.pattern.offset);
+    const segs: Seg[] = e - s <= 0 ? [] : [[s, e]];
     return inverted ? complement(segs) : segs;
   }
   const n = Math.max(1, Math.min(12, Math.round(layer.pattern.count)));
   const ow = Math.max(0.05, Math.min(0.95, layer.pattern.openingWidth ?? 0.5));
   const hw = ow / n / 2; // half-width of each opening
+  const shift = clampHoleShift(n, ow, layer.pattern.offsetX);
   const segs: Seg[] = [];
   let cursor = 0;
   for (let i = 0; i < n; i++) {
-    const center = (i + 0.5) / n;
+    const center = (i + 0.5) / n + shift;
     const a = center - hw;
     const b = center + hw;
     if (a > cursor) segs.push([cursor, a]);
@@ -508,18 +510,18 @@ function Isometric({ layers, refTotal }: { layers: Layer[]; refTotal?: number | 
 
     // update topography for the remaining cases
     if (pattern && pattern.kind === "partialCover") {
-      const c = Math.max(0, Math.min(1, pattern.coverageFraction));
-      const xEdge = -SX + c * 2 * SX;
-      const inv = !!pattern.inverted;
       const depth = Math.max(0, Math.min(1, layer.etchDepth ?? 1));
-      const [ra, rb] = inv ? [xEdge, SX] : [-SX, xEdge];
+      const toX = (f: number) => -SX + f * 2 * SX;
+      const kept = segmentsFor(layer).map(([a, b]) => [toX(a), toX(b)] as const);
+      const removed = complement(segmentsFor(layer)).map(([a, b]) => [toX(a), toX(b)] as const);
       const next: PSeg[] = [];
       for (const s of profile) {
-        // retained part
-        const ka = Math.max(s.a, ra), kb = Math.min(s.b, rb);
-        if (kb > ka) next.push({ a: ka, b: kb, z: zTop });
-        // removed parts
-        for (const [ea, eb] of [[s.a, Math.min(s.b, ra)], [Math.max(s.a, rb), s.b]] as const) {
+        for (const [ra, rb] of kept) {
+          const ka = Math.max(s.a, ra), kb = Math.min(s.b, rb);
+          if (kb > ka) next.push({ a: ka, b: kb, z: zTop });
+        }
+        for (const [ra, rb] of removed) {
+          const ea = Math.max(s.a, ra), eb = Math.min(s.b, rb);
           if (eb > ea) next.push({ a: ea, b: eb, z: depth >= 0.999 ? s.z : zTop - h * depth });
         }
       }
@@ -578,16 +580,24 @@ function Isometric({ layers, refTotal }: { layers: Layer[]; refTotal?: number | 
         const rows = pattern.layout === "grid" ? Math.ceil(Math.sqrt(n)) : 1;
         const cols = Math.ceil(n / rows);
         const openings: { px: number; topY: number; floorY: number; rx: number; ry: number; key: string }[] = [];
+        const rx = Math.min(14, ((2 * SX) / cols / 3) * (ow / 0.5));
+        const ry = rx * SIN * 1.15;
+        // Group shift, clamped so every opening stays inside the wafer footprint.
+        const clampShift = (o: number | undefined, half: number, cells: number, margin: number) => {
+          const v = Math.max(-OFFSET_LIMIT, Math.min(OFFSET_LIMIT, o ?? 0)) * 2 * half;
+          const room = Math.max(0, half / cells - margin);
+          return Math.max(-room, Math.min(room, v));
+        };
+        const shiftX = clampShift(pattern.offsetX, SX, cols, rx * 0.8);
+        const shiftY = clampShift(pattern.offsetY, SY, rows, rx * 0.8);
         let drawn = 0;
         for (let r = 0; r < rows && drawn < n; r++) {
           for (let c = 0; c < cols && drawn < n; c++) {
-            const ux = -SX + ((c + 0.5) / cols) * 2 * SX;
-            const uy = -SY + ((r + 0.5) / rows) * 2 * SY;
+            const ux = -SX + ((c + 0.5) / cols) * 2 * SX + shiftX;
+            const uy = -SY + ((r + 0.5) / rows) * 2 * SY + shiftY;
             const px = cx + (ux - uy) * COS;
             const topY = cy + (ux + uy) * SIN - zTop;
             const floorY = cy + (ux + uy) * SIN - floorZ;
-            const rx = Math.min(14, ((2 * SX) / cols / 3) * (ow / 0.5));
-            const ry = rx * SIN * 1.15;
             openings.push({ px, topY, floorY, rx, ry, key: `${r}-${c}` });
             drawn++;
           }
@@ -678,59 +688,59 @@ function Isometric({ layers, refTotal }: { layers: Layer[]; refTotal?: number | 
           );
         }
       } else {
-        const c = Math.max(0, Math.min(1, pattern.coverageFraction));
-        const xEdge = -SX + c * 2 * SX;
-        const removedMinX = inverted ? -SX : xEdge;
-        const removedMaxX = inverted ? xEdge : SX;
-        const retainedMinX = inverted ? xEdge : -SX;
-        const retainedMaxX = inverted ? SX : xEdge;
-        const pts = `${p(removedMinX, -SY, floorZ)} ${p(removedMaxX, -SY, floorZ)} ${p(removedMaxX, SY, floorZ)} ${p(removedMinX, SY, floorZ)}`;
-        if (floorZ - baseZ > 0.01) {
+        const toX = (f: number) => -SX + f * 2 * SX;
+        const kept = segmentsFor(layer).map(([a, b]) => [toX(a), toX(b)] as const);
+        const removed = complement(segmentsFor(layer)).map(([a, b]) => [toX(a), toX(b)] as const);
+        removed.forEach(([rmin, rmax], k) => {
+          if (rmax - rmin <= 0.01) return;
+          if (floorZ - baseZ > 0.01) {
+            nodes.push(
+              <polygon
+                key={`${layer.id}-pc-floor-front-${k}`}
+                points={`${p(rmin, SY, baseZ)} ${p(rmax, SY, baseZ)} ${p(rmax, SY, floorZ)} ${p(rmin, SY, floorZ)}`}
+                fill={shade(layer.color, 0.68)}
+                stroke="rgba(0,0,0,0.35)"
+                strokeWidth={0.6}
+              />,
+            );
+          }
           nodes.push(
             <polygon
-              key={`${layer.id}-pc-floor-front`}
-              points={`${p(removedMinX, SY, baseZ)} ${p(removedMaxX, SY, baseZ)} ${p(removedMaxX, SY, floorZ)} ${p(removedMinX, SY, floorZ)}`}
-              fill={shade(layer.color, 0.68)}
-              stroke="rgba(0,0,0,0.35)"
-              strokeWidth={0.6}
+              key={`${layer.id}-pc-floor-${k}`}
+              points={`${p(rmin, -SY, floorZ)} ${p(rmax, -SY, floorZ)} ${p(rmax, SY, floorZ)} ${p(rmin, SY, floorZ)}`}
+              fill={belowColor}
+              stroke="rgba(0,0,0,0.3)"
+              strokeWidth={0.5}
             />,
           );
-        }
-        nodes.push(
-          <polygon
-            key={`${layer.id}-pc-floor`}
-            points={pts}
-            fill={belowColor}
-            stroke="rgba(0,0,0,0.3)"
-            strokeWidth={0.5}
-          />,
-        );
-        if (retainedMaxX - retainedMinX > 0.01) {
+        });
+        kept.forEach(([kmin, kmax], k) => {
+          if (kmax - kmin <= 0.01) return;
           nodes.push(
             <polygon
-              key={`${layer.id}-pc-front`}
-              points={`${p(retainedMinX, SY, baseZ)} ${p(retainedMaxX, SY, baseZ)} ${p(retainedMaxX, SY, zTop)} ${p(retainedMinX, SY, zTop)}`}
+              key={`${layer.id}-pc-front-${k}`}
+              points={`${p(kmin, SY, baseZ)} ${p(kmax, SY, baseZ)} ${p(kmax, SY, zTop)} ${p(kmin, SY, zTop)}`}
               fill={shade(layer.color, 0.68)}
               stroke="rgba(0,0,0,0.35)"
               strokeWidth={0.6}
             />,
             <polygon
-              key={`${layer.id}-pc-side`}
-              points={`${p(retainedMaxX, SY, floorZ)} ${p(retainedMaxX, -SY, floorZ)} ${p(retainedMaxX, -SY, zTop)} ${p(retainedMaxX, SY, zTop)}`}
-              fill={wallColor}
+              key={`${layer.id}-pc-side-${k}`}
+              points={`${p(kmax, SY, kmax >= SX - 0.01 ? baseZ : floorZ)} ${p(kmax, -SY, kmax >= SX - 0.01 ? baseZ : floorZ)} ${p(kmax, -SY, zTop)} ${p(kmax, SY, zTop)}`}
+              fill={kmax >= SX - 0.01 ? shade(layer.color, 0.8) : wallColor}
               stroke="rgba(0,0,0,0.35)"
               strokeWidth={0.6}
             />,
             <polygon
-              key={`${layer.id}-pc-top`}
-              points={`${p(retainedMinX, -SY, zTop)} ${p(retainedMaxX, -SY, zTop)} ${p(retainedMaxX, SY, zTop)} ${p(retainedMinX, SY, zTop)}`}
+              key={`${layer.id}-pc-top-${k}`}
+              points={`${p(kmin, -SY, zTop)} ${p(kmax, -SY, zTop)} ${p(kmax, SY, zTop)} ${p(kmin, SY, zTop)}`}
               fill={layer.color}
               stroke="rgba(0,0,0,0.35)"
               strokeWidth={0.6}
               opacity={layer.isResist ? 0.85 : 1}
             />,
           );
-        }
+        });
       }
     }
 

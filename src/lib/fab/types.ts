@@ -8,8 +8,18 @@ export type PatternShape =
       inverted?: boolean;
       /** 0.05..0.95 — width of each opening as a fraction of the pitch (default 0.5) */
       openingWidth?: number;
+      /** -0.45..0.45 — group shift along the wafer width, clamped to wafer edges */
+      offsetX?: number;
+      /** -0.45..0.45 — group shift along the wafer depth (3D only), clamped */
+      offsetY?: number;
     }
-  | { kind: "partialCover"; coverageFraction: number; inverted?: boolean };
+  | {
+      kind: "partialCover";
+      coverageFraction: number;
+      inverted?: boolean;
+      /** 0..(1 - coverage) — start position of the covered strip */
+      offset?: number;
+    };
 
 export type Layer = {
   id: string;
